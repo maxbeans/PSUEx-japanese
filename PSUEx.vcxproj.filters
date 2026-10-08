@@ -198,6 +198,9 @@
     <ClInclude Include="PSUMemory\Patch\ControllerBackgroundPatch.hpp">
       <Filter>Header Files\PSUMemory\Patch</Filter>
     </ClInclude>
+    <ClInclude Include="PSUDetour\Hook_ControllerTriggers.hpp">
+      <Filter>Header Files\PSUFunction</Filter>
+    </ClInclude>
     <ClInclude Include="PSUDetour\Hook_UIScale.hpp">
       <Filter>Header Files\PSUFunction</Filter>
     </ClInclude>
