@@ -43,6 +43,7 @@ before.
    Lang\
      ja\
        ja.json        the text
+       data\          the game's data files in this language (optional)
    ```
 3. Set `LANGUAGE=ja` (the folder's name) in the `[custom]` section of
    `PsuIlluminus.ini` (in
@@ -57,6 +58,15 @@ running.
 
 Each language is a folder of its own, so several can sit side by side; only
 the one `LANGUAGE` names is used.
+
+### Data files
+
+Some text is in the game's own data files rather than drawn as is (menus,
+the login and character screens, room and shop text, mission text). A
+language's `data` folder holds copies of those files in that language, named
+like the files in `DATA` (32 characters). They're loaded in place of the
+originals only while that language is set, the same way as files in `Addon`.
+A file in `Addon` wins over the language's copy.
 
 ### Finding text to translate
 
