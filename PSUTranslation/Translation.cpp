@@ -449,8 +449,20 @@ namespace Translation
 		}
 	}
 
+	// Description boxes (the GAS counter's, NPCs' and counters') draw a
+	// string that starts with a box code, 0xF701 or 0xF702, followed by one
+	// character the code takes (often a 0), and then the text: the game skips
+	// both and draws on. The text is translated, the two kept in front.
+	static bool StartsWithBoxCode( const wchar_t *s )
+	{
+		return s[ 0 ] == 0xF701 || s[ 0 ] == 0xF702;
+	}
+
+	static const wchar_t *TranslatedAfterBoxCode( const wchar_t *s );
+
 	const wchar_t *Translated( const wchar_t *s )
 	{
+		if( StartsWithBoxCode( s ) ) return TranslatedAfterBoxCode( s );
 		std::wstring key( s );
 		std::lock_guard< std::mutex > guard( g_lock );
 		if( g_logUntranslated )
@@ -483,6 +495,49 @@ namespace Translation
 		// Never freed: the game may keep the pointer.
 		wchar_t *kept = new wchar_t[ to.size() + 1 ];
 		memcpy( kept, to.c_str(), ( to.size() + 1 ) * sizeof( wchar_t ) );
+		g_kept++;
+		g_hits.emplace( std::move( key ), kept );
+		return kept;
+	}
+
+	// Longest text read after a box code, in UTF-16 units.
+	constexpr size_t MAX_BOX_TEXT = 1024;
+
+	static const wchar_t *TranslatedAfterBoxCode( const wchar_t *s )
+	{
+		const wchar_t *rest = s + 2;
+		size_t length = wcsnlen( rest, MAX_BOX_TEXT );
+		if( length == 0 || length >= MAX_BOX_TEXT ) return nullptr;
+		std::wstring text( rest, length );
+		// The cache key keeps the code and its character, so the same text
+		// after another code gets its own copy.
+		std::wstring key = std::wstring( s, 2 ) + text;
+		std::lock_guard< std::mutex > guard( g_lock );
+		if( !g_table ) return nullptr;
+
+		auto hit = g_hits.find( key );
+		if( hit != g_hits.end() ) return hit->second;
+		if( g_misses.count( key ) ) return nullptr;
+
+		std::wstring to;
+		if( !g_table->Translate( text, to ) )
+		{
+			NoteUntranslated( text );
+			if( g_misses.size() >= MAX_MISSES ) g_misses.clear();
+			g_misses.insert( std::move( key ) );
+			return nullptr;
+		}
+		if( g_kept >= MAX_TRANSLATED )
+		{
+			if( !g_full ) Log( "%u translated strings kept; new ones are left untranslated", ( unsigned )MAX_TRANSLATED );
+			g_full = true;
+			return nullptr;
+		}
+		// Never freed: the game may keep the pointer.
+		wchar_t *kept = new wchar_t[ 2 + to.size() + 1 ];
+		kept[ 0 ] = s[ 0 ];
+		kept[ 1 ] = s[ 1 ];
+		memcpy( kept + 2, to.c_str(), ( to.size() + 1 ) * sizeof( wchar_t ) );
 		g_kept++;
 		g_hits.emplace( std::move( key ), kept );
 		return kept;
