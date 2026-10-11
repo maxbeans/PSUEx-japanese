@@ -74,4 +74,15 @@ namespace Translation
 
 	// Appends a line to translation.log.
 	void Log( const char *fmt, ... );
+
+	// Written to the game folder with LOG_UNTRANSLATED=1.
+	constexpr const char *UNTRANSLATED_NAME = "untranslated.txt";
+
+	// Writes each distinct string drawn that has a letter in it and no
+	// translation (up to 1,000) to untranslated.txt, as a line ready to fill
+	// in (`English => `). Only after the login: nothing is written before the
+	// game says "Acquiring character information." (or its Japanese), and it
+	// stops again at the login screen's prompt or ID check (English or
+	// Japanese), so what's typed at login (the PSU ID) stays out of it.
+	void SetLogUntranslated( bool on );
 }

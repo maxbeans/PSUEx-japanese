@@ -13,6 +13,8 @@
 *   naked stub that keeps ECX and EDX and swaps EAX.
 * - Game send hook (0x00A8E0EC): shop searches typed in Japanese are sent in
 *   English.
+* - LOG_UNTRANSLATED=1 ([custom] in PsuIlluminus.ini): text drawn with no
+*   translation is written to untranslated.txt (see Translation.h).
 */
 
 #pragma once
@@ -209,6 +211,11 @@ namespace TextDraw
 			return;
 		}
 		Translation::Load();
+		if( PSUIni::Get().ReadBool( L"custom", L"LOG_UNTRANSLATED", false ) )
+		{
+			Translation::SetLogUntranslated( true );
+			Translation::Log( "LOG_UNTRANSLATED: text with no translation goes to %s (from after login)", Translation::UNTRANSLATED_NAME );
+		}
 
 		DetourAttach( &( PVOID & )pOriginal_DrawText, reinterpret_cast< PVOID >( Hook_DrawText ) );
 		if( CodeIs( reinterpret_cast< uintptr_t >( pOriginal_MeasureText ), MEASURE_TEXT_CODE, sizeof( MEASURE_TEXT_CODE ) ) )

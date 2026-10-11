@@ -45,6 +45,16 @@ lines that couldn't be read.
 The file is read again when you save it, so you can edit it while the game is
 running.
 
+### Finding text to translate
+
+With `LOG_UNTRANSLATED=1` in the `[custom]` section of `PsuIlluminus.ini` (in
+`%LOCALAPPDATA%\SEGA\PHANTASY STAR UNIVERSE Illuminus\`), the game's text
+that has no line in `translation.txt` yet is written to `untranslated.txt` in
+the game folder, each as a line ready to fill in (`English => `) and copy into
+`translation.txt`. Each string is written once, up to 1,000 per session. Only
+text shown after you log in is written, so the login screen (your PSU ID)
+stays out of it. Restart the game after changing the setting.
+
 ### Shop search
 
 Type an item's name in Japanese in the shop search, whole or just the start

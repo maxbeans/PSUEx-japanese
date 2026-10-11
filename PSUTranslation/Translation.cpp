@@ -3,6 +3,8 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <cwchar>
+#include <cwctype>
 #include <fstream>
 #include <mutex>
 #include <sstream>
@@ -291,6 +293,88 @@ namespace Translation
 	static FILETIME g_fileTime = {};
 	static DWORD g_lastCheck = 0;
 
+	// LOG_UNTRANSLATED: on, logged in (between the two strings below), and
+	// the strings written so far (at most MAX_LOGGED).
+	constexpr size_t MAX_LOGGED = 1000;
+	// The game's own messages, in English and in Japanese (the Japanese
+	// install's data): logging starts once the character list is loading,
+	// and stops at the login screen's prompt or its ID check, so what's
+	// typed at login (the PSU ID) stays out of it.
+	static const wchar_t *const LOGGED_IN[] = {
+		L"Acquiring character information.",
+		L"\u30AD\u30E3\u30E9\u30AF\u30BF\u30FC\u60C5\u5831\u3092\u53D6\u5F97\u3057\u3066\u3044\u307E\u3059\u3002",
+	};
+	static const wchar_t *const LOGGING_IN[] = {
+		L"Checking PSU ID and Password.",
+		L"PSU ID \u306E\u8A8D\u8A3C\u3092\u884C\u3063\u3066\u3044\u307E\u3059\u3002",
+		L"PSU ID\u3068\u30D1\u30B9\u30EF\u30FC\u30C9\u3092\u5165\u529B\u3057\u3066\u4E0B\u3055\u3044\u3002\n"
+		L"\u5165\u529B\u3055\u308C\u305F\u30D1\u30B9\u30EF\u30FC\u30C9\u306F\u300C*\u300D\u3067\u8868\u793A\u3055\u308C\u307E\u3059\u3002",
+	};
+	static bool g_logUntranslated = false;
+	static bool g_loggedIn = false;
+	static std::unordered_set< std::wstring > g_logged;
+
+	void SetLogUntranslated( bool on )
+	{
+		std::lock_guard< std::mutex > guard( g_lock );
+		g_logUntranslated = on;
+	}
+
+	// `s` as a translation file's English: escapes for \\, {, }, line breaks,
+	// tabs and the game's codes (control and private-use characters), so the
+	// line reads back as `s`.
+	static std::wstring Escape( const std::wstring &s )
+	{
+		std::wstring out;
+		for( wchar_t c : s )
+		{
+			if( c == L'\\' || c == L'{' || c == L'}' )
+			{
+				out += L'\\';
+				out += c;
+			}
+			else if( c == L'\n' ) out += L"\\n";
+			else if( c == L'\r' ) out += L"\\r";
+			else if( c == L'\t' ) out += L"\\t";
+			else if( c < 0x20 || ( c >= 0x7F && c < 0xA0 ) || ( c >= 0xE000 && c <= 0xF8FF ) )
+			{
+				wchar_t code[ 16 ];
+				swprintf( code, 16, L"\\u{%x}", static_cast< unsigned >( c ) );
+				out += code;
+			}
+			else out += c;
+		}
+		return out;
+	}
+
+	// Writes `s` to untranslated.txt the first time it's seen, if it has a
+	// letter in it. Called with g_lock held.
+	static void NoteUntranslated( const std::wstring &s )
+	{
+		if( !g_logUntranslated || !g_loggedIn || g_logged.size() >= MAX_LOGGED ) return;
+		// Text with kana or kanji is already Japanese: a translation drawn
+		// again (the NPC boxes' wrapper swaps its string before
+		// 0x004BB310 sees it).
+		bool letter = false;
+		for( wchar_t c : s )
+		{
+			if( ( c >= 0x3040 && c <= 0x30FF ) || ( c >= 0x4E00 && c <= 0x9FFF ) || ( c >= 0xFF00 && c <= 0xFFEF ) ) return;
+			if( iswalpha( c ) ) letter = true;
+		}
+		if( !letter || !g_logged.insert( s ).second ) return;
+
+		FILE *f = fopen( UNTRANSLATED_NAME, "ab" );
+		if( !f ) return;
+		// A byte order mark on a new file, so Notepad reads it as UTF-8.
+		fseek( f, 0, SEEK_END );
+		if( ftell( f ) == 0 ) fputs( "\xEF\xBB\xBF", f );
+		std::string line = Narrow( Escape( s ) ) + " => \r\n";
+		fwrite( line.data(), 1, line.size(), f );
+		fclose( f );
+		if( g_logged.size() == 1 ) Log( "writing text with no translation to %s", UNTRANSLATED_NAME );
+		if( g_logged.size() == MAX_LOGGED ) Log( "%u untranslated strings written; no more this session", ( unsigned )MAX_LOGGED );
+	}
+
 	void Log( const char *fmt, ... )
 	{
 		FILE *f = fopen( LOG_NAME, "a" );
@@ -369,6 +453,13 @@ namespace Translation
 	{
 		std::wstring key( s );
 		std::lock_guard< std::mutex > guard( g_lock );
+		if( g_logUntranslated )
+		{
+			for( const wchar_t *marker : LOGGED_IN )
+				if( key == marker ) g_loggedIn = true;
+			for( const wchar_t *marker : LOGGING_IN )
+				if( key == marker ) g_loggedIn = false;
+		}
 		if( !g_table ) return nullptr;
 
 		auto hit = g_hits.find( key );
@@ -378,6 +469,7 @@ namespace Translation
 		std::wstring to;
 		if( !g_table->Translate( key, to ) )
 		{
+			NoteUntranslated( key );
 			if( g_misses.size() >= MAX_MISSES ) g_misses.clear();
 			g_misses.insert( std::move( key ) );
 			return nullptr;
