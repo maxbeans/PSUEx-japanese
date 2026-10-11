@@ -134,7 +134,7 @@ std::string Translations::Add( const std::wstring &fromText, const std::wstring 
 			b += p.m_text;
 		}
 		for( auto &p : from ) a += p.m_text;
-		m_exact[ a ] = b;
+		AddExact( a, b );
 		return {};
 	}
 
@@ -411,14 +411,44 @@ namespace Translation
 		return out;
 	}
 
+	// `s` as a JSON string's contents: escapes for " and \, line breaks,
+	// tabs and the game's codes (control and private-use characters).
+	static std::wstring EscapeJson( const std::wstring &s )
+	{
+		std::wstring out;
+		for( wchar_t c : s )
+		{
+			if( c == L'"' || c == L'\\' )
+			{
+				out += L'\\';
+				out += c;
+			}
+			else if( c == L'\n' ) out += L"\\n";
+			else if( c == L'\r' ) out += L"\\r";
+			else if( c == L'\t' ) out += L"\\t";
+			else if( c < 0x20 || ( c >= 0x7F && c < 0xA0 ) || ( c >= 0xE000 && c <= 0xF8FF ) )
+			{
+				wchar_t code[ 16 ];
+				swprintf( code, 16, L"\\u%04x", static_cast< unsigned >( c ) );
+				out += code;
+			}
+			else out += c;
+		}
+		return out;
+	}
+
+	static bool IsJson();
+
 	// Writes `s` to untranslated.txt the first time it's seen, if it has a
 	// letter in it. Called with g_lock held.
 	static void NoteUntranslated( const std::wstring &s )
 	{
 		if( !g_logUntranslated || !g_loggedIn || g_logged.size() >= MAX_LOGGED ) return;
-		// Text with kana or kanji is already Japanese: a translation drawn
-		// again (the NPC boxes' wrapper swaps its string before
-		// 0x004BB310 sees it).
+		// A translation drawn again (the NPC boxes' wrapper swaps its
+		// string before 0x004BB310 sees it) isn't untranslated: one of the
+		// file's translations, or (for one made by a {} line) text with kana
+		// or kanji.
+		if( g_table && g_table->IsTranslation( s ) ) return;
 		bool letter = false;
 		for( wchar_t c : s )
 		{
@@ -432,7 +462,9 @@ namespace Translation
 		// A byte order mark on a new file, so Notepad reads it as UTF-8.
 		fseek( f, 0, SEEK_END );
 		if( ftell( f ) == 0 ) fputs( "\xEF\xBB\xBF", f );
-		std::string line = Narrow( Escape( s ) ) + " => \r\n";
+		std::string line = IsJson()
+			? "\"" + Narrow( EscapeJson( s ) ) + "\": \"\",\r\n"
+			: Narrow( Escape( s ) ) + " => \r\n";
 		fwrite( line.data(), 1, line.size(), f );
 		fclose( f );
 		if( g_logged.size() == 1 ) Log( "writing text with no translation to %s", UNTRANSLATED_NAME );

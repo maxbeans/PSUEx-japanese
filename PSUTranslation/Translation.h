@@ -24,6 +24,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class Translations {
@@ -39,7 +40,15 @@ public:
 	std::string Add( const std::wstring &from, const std::wstring &to );
 
 	// Adds one exact entry, taken as it is (no escapes, no {}).
-	void AddExact( const std::wstring &from, const std::wstring &to ) { m_exact[ from ] = to; }
+	void AddExact( const std::wstring &from, const std::wstring &to )
+	{
+		m_exact[ from ] = to;
+		m_translations.insert( to );
+	}
+
+	// Whether `s` is an exact entry's translation (a translated string
+	// drawn again, as the NPC boxes' text is).
+	bool IsTranslation( const std::wstring &s ) const { return m_translations.count( s ) != 0; }
 
 	// Exact entry first, then patterns in file order.
 	bool Translate( const std::wstring &s, std::wstring &out ) const;
@@ -68,6 +77,7 @@ private:
 	static bool Matches( const std::vector< std::wstring > &parts, const std::wstring &s, std::vector< std::wstring > &caught );
 
 	std::unordered_map< std::wstring, std::wstring > m_exact;
+	std::unordered_set< std::wstring > m_translations;
 	std::vector< Pattern > m_patterns;
 };
 
@@ -111,7 +121,10 @@ namespace Translation
 
 	// Writes each distinct string drawn that has a letter in it and no
 	// translation (up to 1,000) to untranslated.txt, as a line ready to fill
-	// in (`English => `). Only after the login: nothing is written before the
+	// in: for a language file, a JSON entry for "exact" (`"English": "",`),
+	// else a translation.txt line (`English => `). A string that is itself a
+	// translation, or has kana or kanji, isn't written (it's translated text
+	// drawn again). Only after the login: nothing is written before the
 	// game says "Acquiring character information." (or its Japanese), and it
 	// stops again at the login screen's prompt or ID check (English or
 	// Japanese), so what's typed at login (the PSU ID) stays out of it.

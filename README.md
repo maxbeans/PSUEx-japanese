@@ -72,8 +72,9 @@ A file in `Addon` wins over the language's copy.
 
 With `LOG_UNTRANSLATED=1` in the `[custom]` section of `PsuIlluminus.ini`, the
 game's text that has no translation yet is written to `untranslated.txt` in
-the game folder, each as a line ready to fill in (`English => `). Each string
-is written once, up to 1,000 per session. Only text shown after you log in is
+the game folder, each as a line ready to fill in: with a `LANGUAGE` set, as an
+entry to paste into `exact` (`"English": "",`), else as a `translation.txt`
+line (`English => `). Each string is written once, up to 1,000 per session. Only text shown after you log in is
 written, so the login screen (your PSU ID) stays out of it. Restart the game
 after changing the setting.
 
