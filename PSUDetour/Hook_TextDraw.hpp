@@ -1,5 +1,6 @@
 /*
-* Japanese translation hooks, active only when translation.txt is present.
+* Translation hooks, active only when a translation file is present
+* (Lang\<LANGUAGE>\<LANGUAGE>.json, or translation.txt; see Translation.h).
 *
 * - Draw text (0x004BB310) and measure text (0x004BCAC0): swap strings that
 *   have a translation.

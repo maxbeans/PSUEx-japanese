@@ -1,9 +1,23 @@
 /*
 * Translation file parser and lookup.
 *
-* One entry a line: `English => translation`. `{}` matches any text;
-* `{1}`, `{2}` pick a match by position. Escapes: \n \r \t \u{XXXX} \\ \{ \}.
-* Lines starting with # are comments.
+* A language file, Lang\<LANGUAGE>\<LANGUAGE>.json (LANGUAGE in [custom] in
+* PsuIlluminus.ini):
+*
+*   {
+*     "name": "...",
+*     "exact": { "group": { "English": "translation", ... }, ... },
+*     "patterns": [ [ "English with {}", "translation with {}" ], ... ]
+*   }
+*
+* "exact" text is taken as it is (JSON's own escapes only); entries may also
+* sit in "exact" directly, outside a group. "patterns" are tried in order;
+* `{}` matches any text, `{1}`, `{2}` pick a match by position, and `\{`,
+* `\}`, `\\` are a literal brace or backslash.
+*
+* Or, with no LANGUAGE, translation.txt: one entry a line,
+* `English => translation`, with the same `{}`, and escapes
+* \n \r \t \u{XXXX} \\ \{ \}. Lines starting with # are comments.
 */
 
 #pragma once
@@ -14,11 +28,18 @@
 
 class Translations {
 public:
-	// Parses a UTF-8 file; bad lines are skipped with a warning.
+	// Parses a UTF-8 translation.txt; bad lines are skipped with a warning.
 	void Parse( const std::string &file, std::vector< std::string > &warnings );
+
+	// Parses a language .json; bad entries are skipped with a warning.
+	// `name` gets the file's "name" (the language, for the log), if any.
+	void ParseJson( const std::string &file, std::vector< std::string > &warnings, std::string &name );
 
 	// Adds one entry; returns an error, or an empty string.
 	std::string Add( const std::wstring &from, const std::wstring &to );
+
+	// Adds one exact entry, taken as it is (no escapes, no {}).
+	void AddExact( const std::wstring &from, const std::wstring &to ) { m_exact[ from ] = to; }
 
 	// Exact entry first, then patterns in file order.
 	bool Translate( const std::wstring &s, std::wstring &out ) const;
@@ -52,15 +73,25 @@ private:
 
 namespace Translation
 {
-	// Read from the game folder.
+	// Read from the game folder when no LANGUAGE is set.
 	constexpr const char *FILE_NAME = "translation.txt";
+	// Language folders, in the game folder: Lang\<LANGUAGE>\.
+	constexpr const char *LANG_FOLDER = "Lang";
+
+	// LANGUAGE from [custom] in PsuIlluminus.ini, or empty if unset or not a
+	// plain name (letters, digits, - and _, up to 16).
+	const std::string &Language();
+
+	// The file translations are read from: Lang\<LANGUAGE>\<LANGUAGE>.json,
+	// or translation.txt if no LANGUAGE is set.
+	const std::string &FilePath();
 	// Written to the game folder.
 	constexpr const char *LOG_NAME = "translation.log";
 
 	// Hooks are installed only if this is true.
 	bool FileExists();
 
-	// Reads translation.txt into a new table.
+	// Reads the translation file into a new table.
 	void Load();
 
 	// Reloads the file if it changed (checked once a second).

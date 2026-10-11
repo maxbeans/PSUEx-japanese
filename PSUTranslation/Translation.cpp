@@ -11,6 +11,8 @@
 #include <unordered_set>
 
 #include "Translation.h"
+#include "../Json.hpp"
+#include "../PSUIni.hpp"
 
 static std::wstring Widen( const std::string &s )
 {
@@ -183,6 +185,68 @@ void Translations::Parse( const std::string &file, std::vector< std::string > &w
 		}
 		std::string e = Add( Widen( line.substr( 0, arrow ) ), Widen( line.substr( arrow + 4 ) ) );
 		if( !e.empty() ) warnings.push_back( "line " + std::to_string( n ) + ": " + e );
+	}
+}
+
+void Translations::ParseJson( const std::string &file, std::vector< std::string > &warnings, std::string &name )
+{
+	using json = nlohmann::json;
+	json root = json::parse( file, nullptr, false );
+	if( root.is_discarded() || !root.is_object() )
+	{
+		warnings.push_back( "not a JSON object (check for a missing comma or quote)" );
+		return;
+	}
+
+	auto label = root.find( "name" );
+	if( label != root.end() && label->is_string() ) name = label->get< std::string >();
+
+	auto exact = root.find( "exact" );
+	if( exact != root.end() && exact->is_object() )
+	{
+		for( auto &[ key, value ] : exact->items() )
+		{
+			if( value.is_string() )
+			{
+				AddExact( Widen( key ), Widen( value.get< std::string >() ) );
+				continue;
+			}
+			if( !value.is_object() )
+			{
+				warnings.push_back( "exact \"" + key + "\": not a translation or a group of them" );
+				continue;
+			}
+			for( auto &[ from, to ] : value.items() )
+			{
+				if( to.is_string() ) AddExact( Widen( from ), Widen( to.get< std::string >() ) );
+				else warnings.push_back( "exact \"" + key + "\" \"" + from + "\": the translation isn't text" );
+			}
+		}
+	}
+	else if( exact != root.end() )
+	{
+		warnings.push_back( "\"exact\" isn't an object" );
+	}
+
+	auto patterns = root.find( "patterns" );
+	if( patterns != root.end() && patterns->is_array() )
+	{
+		size_t n = 0;
+		for( auto &entry : *patterns )
+		{
+			n++;
+			if( !entry.is_array() || entry.size() != 2 || !entry[ 0 ].is_string() || !entry[ 1 ].is_string() )
+			{
+				warnings.push_back( "pattern " + std::to_string( n ) + ": not [ \"English\", \"translation\" ]" );
+				continue;
+			}
+			std::string e = Add( Widen( entry[ 0 ].get< std::string >() ), Widen( entry[ 1 ].get< std::string >() ) );
+			if( !e.empty() ) warnings.push_back( "pattern " + std::to_string( n ) + ": " + e );
+		}
+	}
+	else if( patterns != root.end() )
+	{
+		warnings.push_back( "\"patterns\" isn't a list" );
 	}
 }
 
@@ -390,10 +454,46 @@ namespace Translation
 		fclose( f );
 	}
 
+	const std::string &Language()
+	{
+		static const std::string language = []() -> std::string
+		{
+			std::wstring code = PSUIni::Get().ReadString( L"custom", L"LANGUAGE", L"" );
+			if( code.empty() ) return {};
+			// A plain name only: it's used in a path.
+			bool plain = code.size() <= 16;
+			for( wchar_t c : code )
+			{
+				if( !( ( c >= L'a' && c <= L'z' ) || ( c >= L'A' && c <= L'Z' ) || ( c >= L'0' && c <= L'9' ) || c == L'-' || c == L'_' ) )
+					plain = false;
+			}
+			if( !plain )
+			{
+				Log( "LANGUAGE=%s isn't a language folder's name (letters, digits, - and _); no language set", Narrow( code ).c_str() );
+				return {};
+			}
+			return Narrow( code );
+		}();
+		return language;
+	}
+
+	const std::string &FilePath()
+	{
+		static const std::string path = Language().empty()
+			? std::string( FILE_NAME )
+			: std::string( LANG_FOLDER ) + "\\" + Language() + "\\" + Language() + ".json";
+		return path;
+	}
+
+	static bool IsJson()
+	{
+		return !Language().empty();
+	}
+
 	static bool FileTime( FILETIME &out )
 	{
 		WIN32_FILE_ATTRIBUTE_DATA data;
-		if( !GetFileAttributesExA( FILE_NAME, GetFileExInfoStandard, &data ) ) return false;
+		if( !GetFileAttributesExA( FilePath().c_str(), GetFileExInfoStandard, &data ) ) return false;
 		out = data.ftLastWriteTime;
 		return true;
 	}
@@ -401,7 +501,9 @@ namespace Translation
 	bool FileExists()
 	{
 		FILETIME t;
-		return FileTime( t );
+		if( FileTime( t ) ) return true;
+		if( IsJson() ) Log( "LANGUAGE=%s but there's no %s; translation off", Language().c_str(), FilePath().c_str() );
+		return false;
 	}
 
 	void Load()
@@ -409,10 +511,11 @@ namespace Translation
 		FILETIME time = {};
 		FileTime( time );
 
-		std::ifstream in( FILE_NAME, std::ios::binary );
+		const char *name = FilePath().c_str();
+		std::ifstream in( name, std::ios::binary );
 		if( !in )
 		{
-			Log( "%s: can't read it", FILE_NAME );
+			Log( "%s: can't read it", name );
 			return;
 		}
 		std::stringstream text;
@@ -420,10 +523,14 @@ namespace Translation
 
 		auto table = new Translations();
 		std::vector< std::string > warnings;
-		table->Parse( text.str(), warnings );
-		for( size_t i = 0; i < warnings.size() && i < 20; i++ ) Log( "%s: %s", FILE_NAME, warnings[ i ].c_str() );
-		if( warnings.size() > 20 ) Log( "%s: %u more warnings", FILE_NAME, ( unsigned )( warnings.size() - 20 ) );
-		Log( "%s: %u exact entries, %u patterns", FILE_NAME, ( unsigned )table->ExactCount(), ( unsigned )table->PatternCount() );
+		std::string language;
+		if( IsJson() ) table->ParseJson( text.str(), warnings, language );
+		else table->Parse( text.str(), warnings );
+		for( size_t i = 0; i < warnings.size() && i < 20; i++ ) Log( "%s: %s", name, warnings[ i ].c_str() );
+		if( warnings.size() > 20 ) Log( "%s: %u more warnings", name, ( unsigned )( warnings.size() - 20 ) );
+		// The language's own name, if the file says it: "Lang\ja\ja.json (Japanese)".
+		std::string shown = language.empty() ? std::string( name ) : std::string( name ) + " (" + language + ")";
+		Log( "%s: %u exact entries, %u patterns", shown.c_str(), ( unsigned )table->ExactCount(), ( unsigned )table->PatternCount() );
 
 		std::lock_guard< std::mutex > guard( g_lock );
 		// Old table is leaked on purpose: the game may still use its strings.
@@ -444,7 +551,7 @@ namespace Translation
 		FILETIME time;
 		if( FileTime( time ) && CompareFileTime( &time, &g_fileTime ) != 0 )
 		{
-			Log( "%s changed; reading it again", FILE_NAME );
+			Log( "%s changed; reading it again", FilePath().c_str() );
 			Load();
 		}
 	}
