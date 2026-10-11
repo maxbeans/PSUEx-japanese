@@ -28,7 +28,7 @@ It enhances and extends the original game by injecting new features and improvem
 ## Japanese translation
 
 PSUEx can optionally show the game's text in Japanese. 
-Text the game shows, including item names, is shown in Japanese, and shop searches can be typed in Japanese.
+Text the game shows, including item names and NPC message boxes that type their text out letter by letter (such as the GAS counter's description), is shown in Japanese, and shop searches can be typed in Japanese.
 
 It's off unless a `translation.txt` is in the game folder. Without it, PSUEx
 works exactly as before.
