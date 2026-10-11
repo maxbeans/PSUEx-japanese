@@ -211,6 +211,7 @@
     <ClInclude Include="PSUMemory\Patch\ViewDistancePatch.hpp" />
     <ClInclude Include="PSUMemory\Patch\ControllerBackgroundPatch.hpp" />
     <ClInclude Include="PSUDetour\Hook_ControllerTriggers.hpp" />
+    <ClInclude Include="PSUDetour\Hook_ControllerHotplug.hpp" />
     <ClInclude Include="PSUModManager\ModManager.hpp" />
     <ClInclude Include="PSUOverlay\ImageMng.h" />
     <ClInclude Include="PSUOverlay\Interface\CameraDisplay.h" />
